@@ -1,5 +1,3 @@
-const DEFAULT_SERVICE_NAME = "keytar-secrets";
-
 /**
  * Secrets manager for handling secure credential storage
  */
@@ -10,13 +8,21 @@ export class SecretsManager {
     this.serviceName = serviceName;
   }
 
+  private async getKeytar() {
+    try {
+      return await import("keytar");
+    } catch (err) {
+      throw new Error(`keytar not available. Please install it to use keychain features.`);
+    }
+  }
+
   /**
    * Get a secret:
    * 1. Check environment variables first (e.g., DB_PASSWORD)
    * 2. If not found, try reading from keytar (macOS Keychain)
-   * 3. If not found or keytar fails, log warning and return empty string
+   * 3. If not found, return null
    */
-  async getSecret(name: string): Promise<string> {
+  async getSecret(name: string): Promise<string | null> {
     // 1. Priority: Environment variables (Recommended for production)
     const fromEnv = process.env[name];
     if (fromEnv && fromEnv.trim() !== "") {
@@ -25,87 +31,49 @@ export class SecretsManager {
 
     // 2. Try Keytar
     try {
-      const keytar = await import("keytar");
+      const keytar = await this.getKeytar();
       const value = await keytar.getPassword(this.serviceName, name);
       if (value) {
         return value;
       }
     } catch (err: any) {
-      // Keytar not installed or failed to load
-      console.warn(`[Secrets] Keytar not available or failed to load for '${name}': ${err.message || err}`);
-      return "";
+      console.error(`[Secrets] Failed to get '${name}': ${err.message}`);
+      return null;
     }
 
     // 3. Not found in Env or Keytar
-    console.warn(`[Secrets] Warning: Secret '${name}' not found in environment variables or system keychain.`);
-    return "";
+    return null;
   }
 
   /**
    * Set a secret in the local keychain (Development only)
    */
-  async setSecretToKeytar(name: string, value: string): Promise<void> {
-    let keytar: typeof import("keytar");
-    try {
-      keytar = await import("keytar");
-    } catch (err) {
-      throw new Error(`keytar not available. Cannot set secret.\nOriginal error: ${err}`);
-    }
+  async setSecret(name: string, value: string): Promise<void> {
+    const keytar = await this.getKeytar();
     await keytar.setPassword(this.serviceName, name, value);
   }
 
   /**
    * Delete a secret from the local keychain (Development only)
    */
-  async deleteSecretFromKeytar(name: string): Promise<boolean> {
-    let keytar: typeof import("keytar");
-    try {
-      keytar = await import("keytar");
-    } catch (err) {
-      throw new Error(`keytar not available. Cannot delete secret.\nOriginal error: ${err}`);
-    }
+  async deleteSecret(name: string): Promise<boolean> {
+    const keytar = await this.getKeytar();
     return await keytar.deletePassword(this.serviceName, name);
   }
 
   /**
    * Move a secret from environment variables to the local keychain.
    * If the environment variable exists, it is saved to the keychain.
-   * Returns true if successful, false if the env var was missing or keytar failed.
    */
-  async saveEnvToKeytar(name: string): Promise<boolean> {
+  async moveEnvToKeytar(name: string): Promise<void> {
     const value = process.env[name];
     if (!value || value.trim() === "") {
-      console.warn(`[Secrets] Environment variable '${name}' is missing or empty. Cannot move to keychain.`);
-      return false;
+      throw new Error(`Environment variable '${name}' is missing or empty`);
     }
 
-    try {
-      await this.setSecretToKeytar(name, value);
-      console.log(`[Secrets] Successfully moved '${name}' from environment to keychain.`);
-      return true;
-    } catch (err: any) {
-      console.error(`[Secrets] Failed to move '${name}' to keychain: ${err.message || err}`);
-      return false;
-    }
+    await this.setSecret(name, value);
   }
-
 }
-
-// Default instance for backwards compatibility
-const defaultManager = new SecretsManager(DEFAULT_SERVICE_NAME);
-
-/**
- * Create a secrets manager with a custom service name
- */
-export function createSecretsManager(serviceName: string): SecretsManager {
-  return new SecretsManager(serviceName);
-}
-
-// Export default functions for convenience
-export const getSecret = (name: string) => defaultManager.getSecret(name);
-export const setSecretToKeytar = (name: string, value: string) => defaultManager.setSecretToKeytar(name, value);
-export const deleteSecretFromKeytar = (name: string) => defaultManager.deleteSecretFromKeytar(name);
-export const saveEnvToKeytar = (name: string) => defaultManager.saveEnvToKeytar(name);
 
 // ============================================================================
 // CLI Utilities
@@ -151,7 +119,7 @@ async function cliGetSecrets() {
   }
   const secretNames = secretNameInput.split(',').map(v => v.trim()).filter(v => v);
 
-  const manager = createSecretsManager(serviceName);
+  const manager = new SecretsManager(serviceName);
 
   console.log('');
   for (const secretName of secretNames) {
@@ -181,7 +149,7 @@ async function cliSetSecrets() {
     return;
   }
 
-  const manager = createSecretsManager(serviceName);
+  const manager = new SecretsManager(serviceName);
   const secrets: Array<{ name: string; value: string }> = [];
 
   let addMore = true;
@@ -212,7 +180,7 @@ async function cliSetSecrets() {
   console.log('');
   for (const secret of secrets) {
     try {
-      await manager.setSecretToKeytar(secret.name, secret.value);
+      await manager.setSecret(secret.name, secret.value);
       console.log(`✓ Successfully saved '${secret.name}'`);
     } catch (err: any) {
       console.error(`✗ Failed to save '${secret.name}': ${err.message || err}`);
@@ -248,11 +216,11 @@ async function cliDeleteSecrets() {
     return;
   }
 
-  const manager = createSecretsManager(serviceName);
+  const manager = new SecretsManager(serviceName);
 
   for (const secretName of secretNames) {
     try {
-      const deleted = await manager.deleteSecretFromKeytar(secretName);
+      const deleted = await manager.deleteSecret(secretName);
       if (deleted) {
         console.log(`✓ Deleted secret '${secretName}'`);
       } else {
@@ -284,12 +252,12 @@ async function cliConvertEnv() {
   }
   const envVars = envVarInput.split(',').map(v => v.trim()).filter(v => v);
 
-  const manager = createSecretsManager(serviceName);
+  const manager = new SecretsManager(serviceName);
 
   console.log('');
   for (const envName of envVars) {
     console.log(`Processing '${envName}'...`);
-    await manager.saveEnvToKeytar(envName);
+    await manager.moveEnvToKeytar(envName);
   }
 }
 
