@@ -1,15 +1,15 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
-const { createSecretsManager } = require('../dist/index');
+import { createSecretsManager } from '../src/index';
 
 async function main() {
   const args = process.argv.slice(2);
 
   if (args.length < 2) {
-    console.error('Usage: keytar-save <SERVICE_NAME> <ENV_VAR_NAME_1> [ENV_VAR_NAME_2] ...');
+    console.error('Usage: bun run bin/save.ts <SERVICE_NAME> <ENV_VAR_NAME_1> [ENV_VAR_NAME_2] ...');
     console.error('');
     console.error('Example:');
-    console.error('  keytar-save my-app DB_PASSWORD API_KEY');
+    console.error('  bun run bin/save.ts my-app DB_PASSWORD API_KEY');
     process.exit(1);
   }
 

@@ -1,9 +1,9 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
-const { createSecretsManager } = require('../dist/index');
+import { createSecretsManager } from '../src/index';
 
 async function runTests() {
-  console.log('Starting @qevan/keytar-secrets tests...');
+  console.log('Starting keytar-secrets tests...');
 
   const serviceName = 'test-service-' + Math.random().toString(36).substring(7);
   const manager = createSecretsManager(serviceName);
@@ -101,7 +101,7 @@ async function runTests() {
 
     console.log('\nAll tests completed successfully!');
     process.exit(0);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Test failed with error:', err);
     process.exit(1);
   }

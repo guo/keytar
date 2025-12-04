@@ -1,6 +1,6 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
-const { createSecretsManager } = require('../dist/index');
+import { createSecretsManager } from '../src/index';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -8,20 +8,11 @@ async function main() {
   const keyName = args[1];
 
   if (!serviceName || !keyName) {
-    console.error('Usage: keytar-delete <SERVICE_NAME> <KEY_NAME>');
+    console.error('Usage: bun run bin/delete.ts <SERVICE_NAME> <KEY_NAME>');
     console.error('');
     console.error('Example:');
-    console.error('  keytar-delete my-app DB_PASSWORD');
+    console.error('  bun run bin/delete.ts my-app DB_PASSWORD');
     process.exit(1);
-  }
-
-  let keytar;
-  try {
-    keytar = await import('keytar');
-  } catch (err) {
-    console.error(`keytar not available. Cannot delete secret.\nOriginal error: ${err.message || err}`);
-    process.exit(1);
-    return;
   }
 
   const manager = createSecretsManager(serviceName);
@@ -35,7 +26,7 @@ async function main() {
       console.error(`[Secrets] Failed to delete secret '${keyName}' from service '${serviceName}'.`);
       process.exit(1);
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[Secrets] Error deleting secret: ${err.message || err}`);
     process.exit(1);
   }

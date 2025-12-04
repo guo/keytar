@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 const DEFAULT_SERVICE_NAME = "keytar-secrets";
-const SALT_KEY = "salt-tcy354";
+const SALT_KEY = "changeme-to-a-random-key";
 
 /**
  * Configuration for a secrets manager instance

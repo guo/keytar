@@ -1,6 +1,6 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
-const { createSecretsManager } = require('../dist/index');
+import { createSecretsManager } from '../src/index';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -8,11 +8,11 @@ async function main() {
   const providedSalt = args[1];
 
   if (!serviceName) {
-    console.error('Usage: keytar-init <SERVICE_NAME> [SALT_VALUE]');
+    console.error('Usage: bun run bin/initialize.ts <SERVICE_NAME> [SALT_VALUE]');
     console.error('');
     console.error('Examples:');
-    console.error('  keytar-init my-app              # Generate random salt');
-    console.error('  keytar-init my-app custom-salt  # Use specific salt');
+    console.error('  bun run bin/initialize.ts my-app              # Generate random salt');
+    console.error('  bun run bin/initialize.ts my-app custom-salt  # Use specific salt');
     process.exit(1);
   }
 
@@ -30,7 +30,7 @@ async function main() {
     }
 
     process.exit(0);
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[Secrets] Failed to initialize salt: ${err.message || err}`);
     process.exit(1);
   }
