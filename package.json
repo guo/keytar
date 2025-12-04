@@ -1,0 +1,38 @@
+{
+  "name": "@qevan/keytar-secrets",
+  "version": "1.0.0",
+  "description": "Secure secrets management using system keychain with environment variable fallback",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "keytar-init": "bin/initialize.js",
+    "keytar-save": "bin/save.js",
+    "keytar-delete": "bin/delete.js",
+    "keytar-test": "bin/test.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "node bin/test.js"
+  },
+  "keywords": [
+    "keychain",
+    "keytar",
+    "secrets",
+    "credentials",
+    "security"
+  ],
+  "author": "qevan",
+  "license": "MIT",
+  "dependencies": {
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ]
+}
