@@ -1,22 +1,51 @@
 #!/usr/bin/env bun
 
 import { createSecretsManager } from '../src/index';
+import * as readline from 'readline';
+
+async function prompt(question: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
 
 async function main() {
   const args = process.argv.slice(2);
-  const serviceName = args[0];
-  const providedSalt = args[1];
+  let serviceName = args[0];
+  let saltKey = args[1];
+  let providedSalt = args[2];
 
+  // If no arguments provided, use interactive mode
   if (!serviceName) {
-    console.error('Usage: bun run bin/initialize.ts <SERVICE_NAME> [SALT_VALUE]');
-    console.error('');
-    console.error('Examples:');
-    console.error('  bun run bin/initialize.ts my-app              # Generate random salt');
-    console.error('  bun run bin/initialize.ts my-app custom-salt  # Use specific salt');
-    process.exit(1);
+    console.log('=== Keytar Secrets Initialization ===\n');
+
+    serviceName = await prompt('Enter service name: ');
+    if (!serviceName) {
+      console.error('Error: Service name is required');
+      process.exit(1);
+    }
+
+    saltKey = await prompt('Enter salt key name (default: salt-key): ');
+    if (!saltKey) {
+      saltKey = 'salt-key';
+    }
+
+    providedSalt = await prompt('Enter salt value (leave empty to auto-generate): ');
+    if (!providedSalt) {
+      providedSalt = undefined;
+    }
   }
 
-  const manager = createSecretsManager(serviceName);
+  const manager = createSecretsManager(serviceName, saltKey);
+  const wasInteractive = args.length === 0;
 
   try {
     const salt = await manager.initializeSalt(providedSalt);
@@ -27,6 +56,19 @@ async function main() {
       console.log(`[Secrets] Salt set to provided value: ${salt}`);
     } else {
       console.log(`[Secrets] Salt ready: ${salt}`);
+    }
+
+    // Show command-line version if interactive mode was used
+    if (wasInteractive) {
+      console.log('\n--- Command-line version for next time ---');
+      let cmd = `bun run bin/initialize.ts ${serviceName}`;
+      if (saltKey) {
+        cmd += ` ${saltKey}`;
+      }
+      if (providedSalt) {
+        cmd += ` ${salt}`;
+      }
+      console.log(cmd);
     }
 
     process.exit(0);
