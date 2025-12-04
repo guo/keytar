@@ -20,26 +20,81 @@ See `src/index.ts` - includes complete implementation:
 - ✅ Salt-based service isolation
 - ✅ TypeScript support
 
+## Configuration
+
+All utility scripts now support configuration via `.env` files. Create a `.env` file in your project directory:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your values
+KEYTAR_SERVICE_NAME=my-app
+KEYTAR_SALT_KEY=salt-key
+```
+
+### Cross-Repository Usage
+
+**Important**: When you run the keytar scripts from another repository, they will automatically use the `.env` file from the directory where you execute them.
+
+For example, if you're in the `rocket-mining` repository and run:
+```bash
+bun run ../keytar/bin/save-env.ts API_KEY SECRET_KEY
+```
+
+The script will read `KEYTAR_SERVICE_NAME` and `KEYTAR_SALT_KEY` from `rocket-mining/.env`, not from `keytar/.env`.
+
+This allows you to:
+- Keep secrets configuration in each project's own `.env` file
+- Use the same keytar scripts across multiple projects
+- Avoid hardcoding service names and salt keys in scripts
+
+Please always use `bun` for running the scripts and bun to run the code, because keytar is stored and isolated between processes. 
+
 ## Utility Scripts
 
 Common management scripts in the `bin/` directory (TypeScript):
 
 ### 1. Initialize Salt
 ```bash
-bun run bin/initialize.ts <SERVICE_NAME> [SALT_VALUE]
+# With .env configuration (recommended)
+bun run bin/initialize.ts
+
+# Or with explicit arguments
+bun run bin/initialize.ts <SERVICE_NAME> [SALT_KEY] [SALT_VALUE]
 ```
 
 ### 2. Save Environment Variables to Keychain
 ```bash
-bun run bin/save.ts <SERVICE_NAME> <ENV_VAR_1> [ENV_VAR_2] ...
+# With .env configuration (recommended)
+bun run bin/save-env.ts <ENV_VAR_1> [ENV_VAR_2] ...
+
+# Or with explicit service name
+bun run bin/save-env.ts <SERVICE_NAME> <ENV_VAR_1> [ENV_VAR_2] ...
+
+# Or with explicit service name and salt key
+bun run bin/save-env.ts <SERVICE_NAME> <SALT_KEY> <ENV_VAR_1> [ENV_VAR_2] ...
 ```
 
-### 3. Delete Secret
+### 3. Set Secret Directly
 ```bash
+# With .env configuration (recommended)
+bun run bin/set-secret.ts <SECRET_NAME> <SECRET_VALUE> [SECRET_NAME_2] [SECRET_VALUE_2] ...
+
+# Or with explicit service name
+bun run bin/set-secret.ts <SERVICE_NAME> <SECRET_NAME> <SECRET_VALUE>
+```
+
+### 4. Delete Secret
+```bash
+# With .env configuration (recommended)
+bun run bin/delete.ts <KEY_NAME>
+
+# Or with explicit service name
 bun run bin/delete.ts <SERVICE_NAME> <KEY_NAME>
 ```
 
-### 4. Run Tests
+### 5. Run Tests
 ```bash
 bun run bin/test.ts
 ```

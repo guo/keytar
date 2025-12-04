@@ -23,19 +23,26 @@ async function main() {
   let saltKey: string | undefined;
   let secretNames: string[];
 
+  // Read from environment variables (from .env in current working directory)
+  const envServiceName = process.env.KEYTAR_SERVICE_NAME;
+  const envSaltKey = process.env.KEYTAR_SALT_KEY;
+
   // If no arguments provided, use interactive mode
   if (args.length === 0) {
     console.log('=== Delete Secrets from Keytar ===\n');
 
-    serviceName = await prompt('Enter service name: ');
+    serviceName = await prompt(`Enter service name${envServiceName ? ` (default: ${envServiceName})` : ''}: `);
     if (!serviceName) {
-      console.error('Error: Service name is required');
-      process.exit(1);
+      serviceName = envServiceName || '';
+      if (!serviceName) {
+        console.error('Error: Service name is required');
+        process.exit(1);
+      }
     }
 
-    saltKey = await prompt('Enter salt key name (default: salt-key): ');
+    saltKey = await prompt(`Enter salt key name${envSaltKey ? ` (default: ${envSaltKey})` : ' (default: salt-key)'}: `);
     if (!saltKey) {
-      saltKey = 'salt-key';
+      saltKey = envSaltKey || 'salt-key';
     }
 
     const secretNameInput = await prompt('Enter secret names to delete (comma-separated): ');
@@ -55,25 +62,61 @@ async function main() {
     }
   } else {
     // Command-line mode
-    if (args.length < 2) {
-      console.error('Usage: bun run bin/delete.ts <SERVICE_NAME> [SALT_KEY] <SECRET_NAME_1> [SECRET_NAME_2] ...');
+    if (args.length === 0 && !envServiceName) {
+      console.error('Usage: bun run bin/delete.ts [SERVICE_NAME] [SALT_KEY] <SECRET_NAME_1> [SECRET_NAME_2] ...');
+      console.error('');
+      console.error('Note: SERVICE_NAME and SALT_KEY can be set via KEYTAR_SERVICE_NAME and KEYTAR_SALT_KEY in .env');
       console.error('');
       console.error('Examples:');
       console.error('  bun run bin/delete.ts my-app DB_PASSWORD');
       console.error('  bun run bin/delete.ts my-app salt-key DB_PASSWORD API_KEY');
+      console.error('  bun run bin/delete.ts DB_PASSWORD API_KEY  # Uses .env values');
       process.exit(1);
     }
 
-    serviceName = args[0];
+    // Try to parse arguments with .env fallbacks
+    if (args.length >= 1) {
+      const firstArgIsSecretName = /^[A-Z][A-Z0-9_]*$/.test(args[0]);
 
-    // Check if second argument looks like a salt key or secret name
-    // If it's all uppercase with underscores, treat it as secret name
-    if (args.length >= 3 && !/^[A-Z_]+$/.test(args[1])) {
-      saltKey = args[1];
-      secretNames = args.slice(2);
+      if (firstArgIsSecretName && envServiceName) {
+        // First arg is a secret name, use .env service name
+        serviceName = envServiceName;
+
+        // Check if second arg is salt key or secret name
+        if (args.length >= 2 && !/^[A-Z][A-Z0-9_]*$/.test(args[1])) {
+          saltKey = args[1];
+          secretNames = args.slice(2).length > 0 ? [args[0], ...args.slice(2)] : [args[0]];
+        } else {
+          saltKey = envSaltKey;
+          secretNames = args;
+        }
+      } else {
+        // First arg is service name
+        serviceName = args[0];
+
+        // Check if second argument looks like a salt key or secret name
+        if (args.length >= 3 && !/^[A-Z][A-Z0-9_]*$/.test(args[1])) {
+          saltKey = args[1];
+          secretNames = args.slice(2);
+        } else {
+          saltKey = envSaltKey;
+          secretNames = args.slice(1);
+        }
+      }
     } else {
-      saltKey = undefined;
-      secretNames = args.slice(1);
+      serviceName = envServiceName || '';
+      saltKey = envSaltKey;
+      secretNames = [];
+    }
+
+    if (!serviceName) {
+      console.error('Error: Service name is required (provide as argument or set KEYTAR_SERVICE_NAME in .env)');
+      process.exit(1);
+    }
+
+    if (secretNames.length === 0) {
+      console.error('Error: At least one secret name is required');
+      process.exit(1);
     }
   }
 

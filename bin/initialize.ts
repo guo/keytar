@@ -23,24 +23,44 @@ async function main() {
   let saltKey = args[1];
   let providedSalt = args[2];
 
+  // Read from environment variables (from .env in current working directory)
+  const envServiceName = process.env.KEYTAR_SERVICE_NAME;
+  const envSaltKey = process.env.KEYTAR_SALT_KEY;
+
   // If no arguments provided, use interactive mode
   if (!serviceName) {
     console.log('=== Keytar Secrets Initialization ===\n');
 
-    serviceName = await prompt('Enter service name: ');
+    serviceName = await prompt(`Enter service name${envServiceName ? ` (default: ${envServiceName})` : ''}: `);
     if (!serviceName) {
-      console.error('Error: Service name is required');
-      process.exit(1);
+      serviceName = envServiceName || '';
+      if (!serviceName) {
+        console.error('Error: Service name is required');
+        process.exit(1);
+      }
     }
 
-    saltKey = await prompt('Enter salt key name (default: salt-key): ');
+    saltKey = await prompt(`Enter salt key name${envSaltKey ? ` (default: ${envSaltKey})` : ' (default: salt-key)'}: `);
     if (!saltKey) {
-      saltKey = 'salt-key';
+      saltKey = envSaltKey || 'salt-key';
     }
 
     providedSalt = await prompt('Enter salt value (leave empty to auto-generate): ');
     if (!providedSalt) {
       providedSalt = undefined;
+    }
+  } else {
+    // Use .env values as fallbacks if no arguments provided
+    if (!serviceName) {
+      serviceName = envServiceName || '';
+    }
+    if (!saltKey) {
+      saltKey = envSaltKey || 'salt-key';
+    }
+
+    if (!serviceName) {
+      console.error('Error: Service name is required (provide as argument or set KEYTAR_SERVICE_NAME in .env)');
+      process.exit(1);
     }
   }
 

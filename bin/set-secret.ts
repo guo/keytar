@@ -48,19 +48,26 @@ async function main() {
   let saltKey: string | undefined;
   let secrets: Array<{ name: string; value: string }> = [];
 
+  // Read from environment variables (from .env in current working directory)
+  const envServiceName = process.env.KEYTAR_SERVICE_NAME;
+  const envSaltKey = process.env.KEYTAR_SALT_KEY;
+
   // If no arguments provided, use interactive mode
   if (args.length === 0) {
     console.log('=== Save Secrets Directly to Keytar ===\n');
 
-    serviceName = await prompt('Enter service name: ');
+    serviceName = await prompt(`Enter service name${envServiceName ? ` (default: ${envServiceName})` : ''}: `);
     if (!serviceName) {
-      console.error('Error: Service name is required');
-      process.exit(1);
+      serviceName = envServiceName || '';
+      if (!serviceName) {
+        console.error('Error: Service name is required');
+        process.exit(1);
+      }
     }
 
-    saltKey = await prompt('Enter salt key name (default: salt-key): ');
+    saltKey = await prompt(`Enter salt key name${envSaltKey ? ` (default: ${envSaltKey})` : ' (default: salt-key)'}: `);
     if (!saltKey) {
-      saltKey = 'salt-key';
+      saltKey = envSaltKey || 'salt-key';
     }
 
     // Allow multiple secrets
@@ -90,40 +97,69 @@ async function main() {
     }
   } else {
     // Command-line mode
-    if (args.length < 3) {
-      console.error('Usage: bun run bin/set-secret.ts <SERVICE_NAME> [SALT_KEY] <SECRET_NAME> <SECRET_VALUE> [SECRET_NAME_2] [SECRET_VALUE_2] ...');
+    if (args.length === 0 && !envServiceName) {
+      console.error('Usage: bun run bin/set-secret.ts [SERVICE_NAME] [SALT_KEY] <SECRET_NAME> <SECRET_VALUE> [SECRET_NAME_2] [SECRET_VALUE_2] ...');
+      console.error('');
+      console.error('Note: SERVICE_NAME and SALT_KEY can be set via KEYTAR_SERVICE_NAME and KEYTAR_SALT_KEY in .env');
       console.error('');
       console.error('Examples:');
       console.error('  bun run bin/set-secret.ts my-app DB_PASSWORD mypassword123');
       console.error('  bun run bin/set-secret.ts my-app salt-key DB_PASSWORD mypassword123 API_KEY abc123');
+      console.error('  bun run bin/set-secret.ts DB_PASSWORD mypassword123 API_KEY abc123  # Uses .env values');
       process.exit(1);
     }
 
-    serviceName = args[0];
+    // Try to parse arguments with .env fallbacks
+    if (args.length >= 1) {
+      const firstArgIsSecretName = /^[A-Z][A-Z0-9_]*$/.test(args[0]);
 
-    // Check if second argument looks like a salt key or secret name
-    // If we have odd number of remaining args after first arg, second arg is likely salt key
-    const remainingArgs = args.slice(1);
-    if (remainingArgs.length >= 3 && remainingArgs.length % 2 === 1) {
-      // Odd number of remaining args, second arg is salt key
-      saltKey = args[1];
+      if (firstArgIsSecretName && envServiceName) {
+        // First arg is a secret name, use .env service name
+        serviceName = envServiceName;
+        saltKey = envSaltKey;
 
-      // Parse secret name-value pairs
-      for (let i = 2; i < args.length; i += 2) {
-        if (i + 1 < args.length) {
-          secrets.push({ name: args[i], value: args[i + 1] });
+        // Parse secret name-value pairs from all args
+        for (let i = 0; i < args.length; i += 2) {
+          if (i + 1 < args.length) {
+            secrets.push({ name: args[i], value: args[i + 1] });
+          }
+        }
+      } else {
+        // First arg is service name
+        serviceName = args[0];
+
+        // Check if second argument looks like a salt key
+        const remainingArgs = args.slice(1);
+        if (remainingArgs.length >= 3 && remainingArgs.length % 2 === 1) {
+          // Odd number of remaining args, second arg is salt key
+          saltKey = args[1];
+
+          // Parse secret name-value pairs
+          for (let i = 2; i < args.length; i += 2) {
+            if (i + 1 < args.length) {
+              secrets.push({ name: args[i], value: args[i + 1] });
+            }
+          }
+        } else {
+          // Even number of remaining args, use .env salt key if available
+          saltKey = envSaltKey;
+
+          // Parse secret name-value pairs
+          for (let i = 1; i < args.length; i += 2) {
+            if (i + 1 < args.length) {
+              secrets.push({ name: args[i], value: args[i + 1] });
+            }
+          }
         }
       }
     } else {
-      // Even number of remaining args, no salt key provided
-      saltKey = undefined;
+      serviceName = envServiceName || '';
+      saltKey = envSaltKey;
+    }
 
-      // Parse secret name-value pairs
-      for (let i = 1; i < args.length; i += 2) {
-        if (i + 1 < args.length) {
-          secrets.push({ name: args[i], value: args[i + 1] });
-        }
-      }
+    if (!serviceName) {
+      console.error('Error: Service name is required (provide as argument or set KEYTAR_SERVICE_NAME in .env)');
+      process.exit(1);
     }
 
     if (secrets.length === 0) {
