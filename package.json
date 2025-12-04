@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Utility scripts and examples for keytar-based secret storage",
   "scripts": {
-    "test": "bun run bin/test.ts"
+    "test": "bun test"
   },
   "keywords": [
     "keychain",

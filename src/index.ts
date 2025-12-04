@@ -1,50 +1,19 @@
-import crypto from "crypto";
-
 const DEFAULT_SERVICE_NAME = "keytar-secrets";
-const SALT_KEY = "changeme-to-a-random-key";
-
-/**
- * Configuration for a secrets manager instance
- */
-export interface SecretsConfig {
-  serviceName: string;
-  saltKey?: string;
-}
 
 /**
  * Secrets manager for handling secure credential storage
  */
 export class SecretsManager {
   private serviceName: string;
-  private saltKey: string;
 
-  constructor(config: SecretsConfig) {
-    this.serviceName = config.serviceName;
-    this.saltKey = config.saltKey || SALT_KEY;
-  }
-
-  /**
-   * Helper to determine the service name to use with Keytar.
-   * If the secret name is "salt", we use the base serviceName.
-   * Otherwise, we try to read the "salt" from the base serviceName and append it.
-   */
-  private async getServiceWithSalt(keytar: any, secretName: string): Promise<string> {
-    if (secretName === "salt") {
-      return this.serviceName;
-    }
-    const salt = await keytar.getPassword(this.serviceName, this.saltKey);
-
-    if (!salt) {
-      throw new Error(`[Secrets] Salt not found for service '${this.serviceName}'.`);
-    }
-    return `${this.serviceName}-${salt}`;
+  constructor(serviceName: string) {
+    this.serviceName = serviceName;
   }
 
   /**
    * Get a secret:
    * 1. Check environment variables first (e.g., DB_PASSWORD)
    * 2. If not found, try reading from keytar (macOS Keychain)
-   *    - Reads 'salt' first to determine the correct service scope
    * 3. If not found or keytar fails, log warning and return empty string
    */
   async getSecret(name: string): Promise<string> {
@@ -57,8 +26,7 @@ export class SecretsManager {
     // 2. Try Keytar
     try {
       const keytar = await import("keytar");
-      const service = await this.getServiceWithSalt(keytar, name);
-      const value = await keytar.getPassword(service, name);
+      const value = await keytar.getPassword(this.serviceName, name);
       if (value) {
         return value;
       }
@@ -83,8 +51,7 @@ export class SecretsManager {
     } catch (err) {
       throw new Error(`keytar not available. Cannot set secret.\nOriginal error: ${err}`);
     }
-    const service = await this.getServiceWithSalt(keytar, name);
-    await keytar.setPassword(service, name, value);
+    await keytar.setPassword(this.serviceName, name, value);
   }
 
   /**
@@ -97,8 +64,7 @@ export class SecretsManager {
     } catch (err) {
       throw new Error(`keytar not available. Cannot delete secret.\nOriginal error: ${err}`);
     }
-    const service = await this.getServiceWithSalt(keytar, name);
-    return await keytar.deletePassword(service, name);
+    return await keytar.deletePassword(this.serviceName, name);
   }
 
   /**
@@ -123,54 +89,16 @@ export class SecretsManager {
     }
   }
 
-  /**
-   * Initialize the salt used for keytar service names.
-   * - If a salt already exists in keytar, it returns the existing salt.
-   * - If no salt exists and newSalt is provided, it uses that value.
-   * - If no salt exists and newSalt is not provided, it generates a random 8-character alphanumeric string.
-   * WARNING: Changing the salt will make previously stored secrets inaccessible unless migrated.
-   */
-  async initializeSalt(newSalt?: string): Promise<string> {
-    let keytar: typeof import("keytar");
-    try {
-      keytar = await import("keytar");
-    } catch (err) {
-      throw new Error(`keytar not available. Cannot initialize salt.\nOriginal error: ${err}`);
-    }
-
-    // read salt from keytar first
-    const salt = await keytar.getPassword(this.serviceName, this.saltKey);
-    if (salt) {
-      console.log(`[Secrets] Salt already exists for service '${this.serviceName}': ${salt}`);
-      return salt;
-    }
-
-    // no existing salt, generate a new one if not provided
-    if (!newSalt) {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-      const length = 8;
-      const bytes = crypto.randomBytes(length);
-      newSalt = '';
-      for (let i = 0; i < length; i++) {
-        newSalt += chars[bytes[i] % chars.length];
-      }
-    }
-
-    // store the salt
-    await keytar.setPassword(this.serviceName, this.saltKey, newSalt);
-    console.log(`[Secrets] Salt initialized/updated for service '${this.serviceName}': ${newSalt}`);
-    return newSalt;
-  }
 }
 
 // Default instance for backwards compatibility
-const defaultManager = new SecretsManager({ serviceName: DEFAULT_SERVICE_NAME });
+const defaultManager = new SecretsManager(DEFAULT_SERVICE_NAME);
 
 /**
  * Create a secrets manager with a custom service name
  */
-export function createSecretsManager(serviceName: string, saltKey?: string): SecretsManager {
-  return new SecretsManager({ serviceName, saltKey });
+export function createSecretsManager(serviceName: string): SecretsManager {
+  return new SecretsManager(serviceName);
 }
 
 // Export default functions for convenience
@@ -178,4 +106,244 @@ export const getSecret = (name: string) => defaultManager.getSecret(name);
 export const setSecretToKeytar = (name: string, value: string) => defaultManager.setSecretToKeytar(name, value);
 export const deleteSecretFromKeytar = (name: string) => defaultManager.deleteSecretFromKeytar(name);
 export const saveEnvToKeytar = (name: string) => defaultManager.saveEnvToKeytar(name);
-export const initializeSalt = (newSalt?: string) => defaultManager.initializeSalt(newSalt);
+
+// ============================================================================
+// CLI Utilities
+// ============================================================================
+
+import * as readline from 'readline';
+
+async function prompt(question: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+// ============================================================================
+// CLI Commands
+// ============================================================================
+
+async function cliGetSecrets() {
+  console.log('\n=== Get Secrets from Keytar ===\n');
+
+  const envServiceName = process.env.KEYTAR_SERVICE_NAME;
+  let serviceName = await prompt(`Enter service name${envServiceName ? ` (default: ${envServiceName})` : ''}: `);
+  if (!serviceName) {
+    serviceName = envServiceName || '';
+  }
+  if (!serviceName) {
+    console.error('Error: Service name is required');
+    return;
+  }
+
+  const secretNameInput = await prompt('Enter secret names to retrieve (comma-separated): ');
+  if (!secretNameInput) {
+    console.error('Error: At least one secret name is required');
+    return;
+  }
+  const secretNames = secretNameInput.split(',').map(v => v.trim()).filter(v => v);
+
+  const manager = createSecretsManager(serviceName);
+
+  console.log('');
+  for (const secretName of secretNames) {
+    try {
+      const secretValue = await manager.getSecret(secretName);
+      if (secretValue) {
+        console.log(`${secretName}: ${secretValue}`);
+      } else {
+        console.error(`✗ Secret '${secretName}' not found`);
+      }
+    } catch (err: any) {
+      console.error(`✗ Error retrieving secret '${secretName}': ${err.message || err}`);
+    }
+  }
+}
+
+async function cliSetSecrets() {
+  console.log('\n=== Set Secrets in Keytar ===\n');
+
+  const envServiceName = process.env.KEYTAR_SERVICE_NAME;
+  let serviceName = await prompt(`Enter service name${envServiceName ? ` (default: ${envServiceName})` : ''}: `);
+  if (!serviceName) {
+    serviceName = envServiceName || '';
+  }
+  if (!serviceName) {
+    console.error('Error: Service name is required');
+    return;
+  }
+
+  const manager = createSecretsManager(serviceName);
+  const secrets: Array<{ name: string; value: string }> = [];
+
+  let addMore = true;
+  while (addMore) {
+    const secretName = await prompt('\nEnter secret name: ');
+    if (!secretName) {
+      console.error('Error: Secret name is required');
+      continue;
+    }
+
+    const secretValue = await prompt('Enter secret value: ');
+    if (!secretValue) {
+      console.error('Error: Secret value is required');
+      continue;
+    }
+
+    secrets.push({ name: secretName, value: secretValue });
+
+    const more = await prompt('\nAdd another secret? (y/n): ');
+    addMore = more.toLowerCase() === 'y' || more.toLowerCase() === 'yes';
+  }
+
+  if (secrets.length === 0) {
+    console.error('Error: At least one secret is required');
+    return;
+  }
+
+  console.log('');
+  for (const secret of secrets) {
+    try {
+      await manager.setSecretToKeytar(secret.name, secret.value);
+      console.log(`✓ Successfully saved '${secret.name}'`);
+    } catch (err: any) {
+      console.error(`✗ Failed to save '${secret.name}': ${err.message || err}`);
+    }
+  }
+}
+
+async function cliDeleteSecrets() {
+  console.log('\n=== Delete Secrets from Keytar ===\n');
+
+  const envServiceName = process.env.KEYTAR_SERVICE_NAME;
+  let serviceName = await prompt(`Enter service name${envServiceName ? ` (default: ${envServiceName})` : ''}: `);
+  if (!serviceName) {
+    serviceName = envServiceName || '';
+  }
+  if (!serviceName) {
+    console.error('Error: Service name is required');
+    return;
+  }
+
+  const secretNameInput = await prompt('Enter secret names to delete (comma-separated): ');
+  if (!secretNameInput) {
+    console.error('Error: At least one secret name is required');
+    return;
+  }
+  const secretNames = secretNameInput.split(',').map(v => v.trim()).filter(v => v);
+
+  console.log('\nSecrets to delete:');
+  secretNames.forEach(name => console.log(`  - ${name}`));
+  const confirm = await prompt('\nAre you sure you want to delete these secrets? (y/n): ');
+  if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') {
+    console.log('Deletion cancelled.');
+    return;
+  }
+
+  const manager = createSecretsManager(serviceName);
+
+  for (const secretName of secretNames) {
+    try {
+      const deleted = await manager.deleteSecretFromKeytar(secretName);
+      if (deleted) {
+        console.log(`✓ Deleted secret '${secretName}'`);
+      } else {
+        console.error(`✗ Failed to delete secret '${secretName}' (not found or already deleted)`);
+      }
+    } catch (err: any) {
+      console.error(`✗ Error deleting secret '${secretName}': ${err.message || err}`);
+    }
+  }
+}
+
+async function cliConvertEnv() {
+  console.log('\n=== Convert Environment Variables to Keytar ===\n');
+
+  const envServiceName = process.env.KEYTAR_SERVICE_NAME;
+  let serviceName = await prompt(`Enter service name${envServiceName ? ` (default: ${envServiceName})` : ''}: `);
+  if (!serviceName) {
+    serviceName = envServiceName || '';
+  }
+  if (!serviceName) {
+    console.error('Error: Service name is required');
+    return;
+  }
+
+  const envVarInput = await prompt('Enter environment variable names (comma-separated): ');
+  if (!envVarInput) {
+    console.error('Error: At least one environment variable name is required');
+    return;
+  }
+  const envVars = envVarInput.split(',').map(v => v.trim()).filter(v => v);
+
+  const manager = createSecretsManager(serviceName);
+
+  console.log('');
+  for (const envName of envVars) {
+    console.log(`Processing '${envName}'...`);
+    await manager.saveEnvToKeytar(envName);
+  }
+}
+
+// ============================================================================
+// CLI Entry Point
+// ============================================================================
+
+async function runCLI() {
+  console.log('\n╔═══════════════════════════════════════╗');
+  console.log('║   Keytar Secrets Manager CLI          ║');
+  console.log('╚═══════════════════════════════════════╝\n');
+
+  console.log('What would you like to do?\n');
+  console.log('1. Get secrets');
+  console.log('2. Set secrets');
+  console.log('3. Delete secrets');
+  console.log('4. Convert environment variables to secrets');
+  console.log('5. Exit\n');
+
+  const choice = await prompt('Enter your choice (1-5): ');
+
+  switch (choice) {
+    case '1':
+      await cliGetSecrets();
+      break;
+    case '2':
+      await cliSetSecrets();
+      break;
+    case '3':
+      await cliDeleteSecrets();
+      break;
+    case '4':
+      await cliConvertEnv();
+      break;
+    case '5':
+      console.log('Goodbye!');
+      process.exit(0);
+    default:
+      console.error('Invalid choice. Please enter 1-5.');
+  }
+
+  console.log('\n');
+  const again = await prompt('Would you like to perform another operation? (y/n): ');
+  if (again.toLowerCase() === 'y' || again.toLowerCase() === 'yes') {
+    await runCLI();
+  } else {
+    console.log('Goodbye!');
+  }
+}
+
+// Run CLI if executed directly
+if (import.meta.main) {
+  runCLI().catch(err => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}
