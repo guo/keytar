@@ -75,22 +75,29 @@ The CLI will prompt you for:
 Import and use the library in your code:
 
 ```typescript
-import { createSecretsManager } from './src/index.ts';
+import { SecretsManager, getSecret, setSecret, deleteSecret, moveEnvToKeytar } from './src/index.ts';
 
-// Create a manager with your service name
-const secrets = createSecretsManager('my-app-xyz123');
+// Option 1: Create a manager instance with your service name
+const secrets = new SecretsManager('my-app-xyz123');
 
 // Get a secret (checks env vars first, then keychain)
 const apiKey = await secrets.getSecret('API_KEY');
 
 // Set a secret in keychain
-await secrets.setSecretToKeytar('API_KEY', 'secret-value');
+await secrets.setSecret('API_KEY', 'secret-value');
 
 // Delete a secret from keychain
-await secrets.deleteSecretFromKeytar('API_KEY');
+await secrets.deleteSecret('API_KEY');
 
 // Convert environment variable to keychain
-await secrets.saveEnvToKeytar('DATABASE_URL');
+await secrets.moveEnvToKeytar('DATABASE_URL');
+
+// Option 2: Use default singleton functions (requires KEYTAR_SERVICE_NAME env var)
+// Set KEYTAR_SERVICE_NAME in your .env file
+const apiKey = await getSecret('API_KEY');
+await setSecret('API_KEY', 'secret-value');
+await deleteSecret('API_KEY');
+await moveEnvToKeytar('DATABASE_URL');
 ```
 
 ### Run Tests
@@ -104,22 +111,25 @@ The test suite includes 8 tests:
 - ✅ Get a secret from keychain
 - ✅ Environment variable precedence over keychain
 - ✅ Delete a secret from keychain
-- ✅ Return empty string for deleted secret
-- ✅ Return empty string for non-existent secret
-- ✅ Move environment variable to keychain (saveEnvToKeytar)
+- ✅ Return null for deleted secret
+- ✅ Return null for non-existent secret
+- ✅ Move environment variable to keychain (moveEnvToKeytar)
 - ✅ Retrieve moved secret from keychain
 
 ## Using in New Projects
 
 1. Copy `src/index.ts` to your project (e.g., `src/utils/secrets.ts`)
-2. Change `DEFAULT_SERVICE_NAME` to a unique, hard-to-guess random string:
-   ```typescript
-   const DEFAULT_SERVICE_NAME = "my-unique-random-service-name-abc123xyz";
+2. Set `KEYTAR_SERVICE_NAME` environment variable to a unique, hard-to-guess random string:
+   ```bash
+   # In your .env file
+   KEYTAR_SERVICE_NAME=my-unique-random-service-name-abc123xyz
    ```
 3. Import and use in your code:
    ```typescript
-   import { createSecretsManager } from './src/utils/secrets.ts';
-   const secrets = createSecretsManager('my-service');
+   import { SecretsManager } from './src/utils/secrets.ts';
+   const secrets = new SecretsManager('my-service');
+   // OR use the singleton functions after setting KEYTAR_SERVICE_NAME env var
+   import { getSecret, setSecret } from './src/utils/secrets.ts';
    ```
 4. Or run as CLI:
    ```bash
@@ -143,7 +153,7 @@ That's it! One file, all functionality included.
 1. **Priority System**:
    - First checks environment variables (recommended for production)
    - Then checks system keychain (recommended for local development)
-   - Returns empty string if not found
+   - Returns null if not found
 
 2. **Service-based Isolation**:
    - Each project uses a unique service name

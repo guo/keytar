@@ -76,6 +76,62 @@ export class SecretsManager {
 }
 
 // ============================================================================
+// Global Singleton Instance
+// ============================================================================
+
+/**
+ * Default secrets manager instance using KEYTAR_SERVICE_NAME from environment
+ * KEYTAR_SERVICE_NAME must be set in environment variables
+ */
+if (!process.env.KEYTAR_SERVICE_NAME) {
+  throw new Error("KEYTAR_SERVICE_NAME environment variable is required");
+}
+
+const defaultSecretsManager = new SecretsManager(
+  process.env.KEYTAR_SERVICE_NAME
+);
+
+/**
+ * Get a secret from environment variables or keychain
+ * @param name - Secret name
+ * @returns Secret value or null if not found
+ */
+export async function getSecret(name: string): Promise<string | null> {
+  return defaultSecretsManager.getSecret(name);
+}
+
+/**
+ * Set a secret in the local keychain (Development only)
+ * @param name - Secret name
+ * @param value - Secret value
+ */
+export async function setSecret(name: string, value: string): Promise<void> {
+  return defaultSecretsManager.setSecret(name, value);
+}
+
+/**
+ * Delete a secret from the local keychain (Development only)
+ * @param name - Secret name
+ * @returns True if deleted, false otherwise
+ */
+export async function deleteSecret(name: string): Promise<boolean> {
+  return defaultSecretsManager.deleteSecret(name);
+}
+
+/**
+ * Move a secret from environment variables to the local keychain
+ * @param name - Environment variable name
+ */
+export async function moveEnvToKeytar(name: string): Promise<void> {
+  return defaultSecretsManager.moveEnvToKeytar(name);
+}
+
+/**
+ * Export the default singleton instance for advanced use cases
+ */
+export { defaultSecretsManager };
+
+// ============================================================================
 // CLI Utilities
 // ============================================================================
 

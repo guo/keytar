@@ -1,8 +1,11 @@
+// Set required environment variable for singleton before any imports
+process.env.KEYTAR_SERVICE_NAME = 'test-service-singleton';
+
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { createSecretsManager } from '../src/index';
+import { SecretsManager } from '../src/index';
 
 const serviceName = 'test-service-' + Math.random().toString(36).substring(7);
-const manager = createSecretsManager(serviceName);
+const manager = new SecretsManager(serviceName);
 
 const testKey = 'TEST_SECRET_KEY_12345';
 const testValue = 'secret_value_abcde';
@@ -11,8 +14,8 @@ describe("Keytar Secrets Manager", () => {
   beforeAll(async () => {
     // Clean up any existing test keys
     try {
-      await manager.deleteSecretFromKeytar(testKey);
-      await manager.deleteSecretFromKeytar('ENV_MOVE_TEST_KEY');
+      await manager.deleteSecret(testKey);
+      await manager.deleteSecret('ENV_MOVE_TEST_KEY');
     } catch (e) {
       // Ignore if not found
     }
@@ -21,22 +24,22 @@ describe("Keytar Secrets Manager", () => {
   afterAll(async () => {
     // Clean up test secrets
     try {
-      await manager.deleteSecretFromKeytar(testKey);
-      await manager.deleteSecretFromKeytar('ENV_MOVE_TEST_KEY');
+      await manager.deleteSecret(testKey);
+      await manager.deleteSecret('ENV_MOVE_TEST_KEY');
     } catch (e) {
       // Ignore cleanup errors
     }
   });
 
   test("should set a secret to keychain", async () => {
-    await manager.setSecretToKeytar(testKey, testValue);
+    await manager.setSecret(testKey, testValue);
     // If no error is thrown, test passes
     expect(true).toBe(true);
   });
 
   test("should get a secret from keychain", async () => {
     // First ensure the secret exists
-    await manager.setSecretToKeytar(testKey, testValue);
+    await manager.setSecret(testKey, testValue);
 
     const retrievedValue = await manager.getSecret(testKey);
     expect(retrievedValue).toBe(testValue);
@@ -44,7 +47,7 @@ describe("Keytar Secrets Manager", () => {
 
   test("should prioritize environment variables over keychain", async () => {
     // Set secret in keychain
-    await manager.setSecretToKeytar(testKey, testValue);
+    await manager.setSecret(testKey, testValue);
 
     // Set environment variable with different value
     const envValue = 'env_value_override';
@@ -59,26 +62,26 @@ describe("Keytar Secrets Manager", () => {
 
   test("should delete a secret from keychain", async () => {
     // First ensure the secret exists
-    await manager.setSecretToKeytar(testKey, testValue);
+    await manager.setSecret(testKey, testValue);
 
-    const deleted = await manager.deleteSecretFromKeytar(testKey);
+    const deleted = await manager.deleteSecret(testKey);
     expect(deleted).toBe(true);
   });
 
-  test("should return empty string for deleted secret", async () => {
+  test("should return null for deleted secret", async () => {
     // Ensure secret is deleted
-    await manager.deleteSecretFromKeytar(testKey);
+    await manager.deleteSecret(testKey);
 
     const retrievedValue = await manager.getSecret(testKey);
-    expect(retrievedValue).toBe('');
+    expect(retrievedValue).toBe(null);
   });
 
-  test("should return empty string for non-existent secret", async () => {
+  test("should return null for non-existent secret", async () => {
     const nonExistent = await manager.getSecret('NON_EXISTENT_KEY_XYZ');
-    expect(nonExistent).toBe('');
+    expect(nonExistent).toBe(null);
   });
 
-  test("should move environment variable to keychain with saveEnvToKeytar", async () => {
+  test("should move environment variable to keychain with moveEnvToKeytar", async () => {
     const envMoveKey = 'ENV_MOVE_TEST_KEY';
     const envMoveValue = 'moved_from_env_value';
 
@@ -86,8 +89,7 @@ describe("Keytar Secrets Manager", () => {
     process.env[envMoveKey] = envMoveValue;
 
     // Move to keychain
-    const moveSuccess = await manager.saveEnvToKeytar(envMoveKey);
-    expect(moveSuccess).toBe(true);
+    await manager.moveEnvToKeytar(envMoveKey);
 
     // Clean up env var
     delete process.env[envMoveKey];
@@ -99,7 +101,7 @@ describe("Keytar Secrets Manager", () => {
 
     // Ensure env var is set and moved
     process.env[envMoveKey] = envMoveValue;
-    await manager.saveEnvToKeytar(envMoveKey);
+    await manager.moveEnvToKeytar(envMoveKey);
 
     // Remove env var
     delete process.env[envMoveKey];
